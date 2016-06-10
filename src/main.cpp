@@ -22,6 +22,17 @@
 #define ITG_3200_SR_DIV_DATA 0b00000100 // 200Hz output
 #define ITG_3200_SCALE_FACTOR 14.375f
 
+// magnetometer constants
+#define HMC5883L_ADDRESS 0x1e // device address
+#define HMC5883L_SENS_REG 0x03 // 6 bytes X_H, X_L, Z_H, Z_L, Y_H, Y_L
+#define HMC5883L_CONF_REG_A 0x00 // configuration register A
+#define HMC5883L_CONF_REG_B 0x01 // configuration register B
+#define HMC5883L_MODE_REG 0x03 // mode register
+#define HMC5883L_STATUS_REG 0x09 // status register
+#define HMC5883L_CONF_DATA_A 0b01111000 // 8sample average, 75Hz, normal measurement mode
+#define HMC5883L_CONF_DATA_B 0b00100000 // range +-1.3Ga, 0,92mGa/LSb
+#define HMC5883L_MODE_DATA 0b00000000 // continous measurement mode
+
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
   (byte & 0x80 ? '1' : '0'), \
@@ -53,6 +64,8 @@ int init_accel(gnublin_i2c *port);
 
 int init_gyro(gnublin_i2c *port);
 
+int init_magnet(gnublin_i2c *port);
+
 int read_accel(gnublin_i2c *port, int *x_axis, int *y_axis, int *z_axis);
 
 int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, float *z_axis);
@@ -66,21 +79,21 @@ int main(int argc, char **argv) {
    gnublin_i2c i2c;
    init_accel(&i2c);
    init_gyro(&i2c);
+   init_magnet(&i2c);
 
-   for (unsigned char i = 0; i < 100; i++) {
+   for (unsigned char i = 0; i < 10; i++) {
       read_accel(&i2c, &linear_acceleration[0], &linear_acceleration[1], &linear_acceleration[2]);
-      usleep(5000);
+
+
+      read_gyro(&i2c, &temperature, &rotational_acceleration[0], &rotational_acceleration[1],
+                &rotational_acceleration[2]);
+      //cout << "Temp: " << temperature << endl;
       //printf("i = %d, byte: "BYTE_TO_BINARY_PATTERN"\n", (signed char)i, BYTE_TO_BINARY(
       //      (unsigned
       // char) i));
-   }
-
-   for (unsigned char i = 0; i < 100; i++) {
-      read_gyro(&i2c, &temperature, &rotational_acceleration[0], &rotational_acceleration[1],
-                &rotational_acceleration[2]);
-      cout << "Temp: " << temperature << endl;
       usleep(5000);
    }
+
 
    /*while (node.ok()) {
          rate.sleep();
@@ -138,7 +151,7 @@ int read_accel(gnublin_i2c *port, int *x_axis, int *y_axis, int *z_axis) {
    tmp_axis = lsb + (msb << 8);
    *z_axis = (signed int) tmp_axis;
 
-   cout << "x: " << *x_axis << ", y: " << *y_axis << ", z: " << *z_axis << endl;
+   //cout << "x: " << *x_axis << ", y: " << *y_axis << ", z: " << *z_axis << endl;
    return 0;
 }
 
@@ -182,8 +195,8 @@ int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, floa
    lsb = gyro_buffer[1];
    msb = gyro_buffer[0];
    tmp_axis = lsb + (msb << 8);
-   printf("Temp: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[0]));
-   printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[1]));
+   //printf("Temp: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[0]));
+   //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[1]));
    *temp = 35.0f + ((tmp_axis + 13200) & 0xFFFF) / 280.0f;
 
    // x_axis
@@ -203,5 +216,34 @@ int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, floa
    msb = (signed char) gyro_buffer[6];
    tmp_axis = lsb + (msb << 8);
    *z_axis = ((signed int) tmp_axis) / ITG_3200_SCALE_FACTOR;
+   return 0;
+}
+
+int init_magnet(gnublin_i2c *port) {
+   // set the address of the slave you want to read/write
+   if (port->setAddress(HMC5883L_ADDRESS) == -1) {
+      return -1;
+   }
+   i2c_buffer = HMC5883L_CONF_DATA_A;
+   if (port->send(HMC5883L_CONF_REG_A, &i2c_buffer, 1) == -1) {
+      return -2;
+   }
+
+   i2c_buffer = HMC5883L_CONF_DATA_B;
+   if (port->send(HMC5883L_CONF_REG_B, &i2c_buffer, 1) == -1) {
+      return -3;
+   }
+
+   i2c_buffer = HMC5883L_MODE_DATA;
+   if (port->send(HMC5883L_MODE_REG, &i2c_buffer, 1) == -1) {
+      return -4;
+   }
+
+   if (port->receive(HMC5883L_STATUS_REG, &i2c_buffer, 1) == -1) {
+      return -5;
+   }
+   cout << "Magnetometer status: " << i2c_buffer;
+   printf("; "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
+
    return 0;
 }
