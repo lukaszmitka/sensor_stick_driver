@@ -2,11 +2,25 @@
 // Created by lukasz on 07.06.16.
 //
 #define BOARD RASPBERRY_PI
+
+// accelerometer constants
 #define ADXL345_ADDRESS 0x53
 #define ADXL_REGISTER_PWRCTL 0x2D
 #define ADXL_REGISTER_BW_RATE 0x2C
 #define ADXL_DATA_FORMAT 0x31
 #define ADXL_PWRCTL_MEASURE 0x8
+
+// gyro constants
+#define ITG_3200_ADDRESS 0x68 // device address
+#define ITG_3200_SENS_REG 0x1B // 8 bytes: T_H, T_L, GX_H, GX_L, GY_H, GY_L, GZ_H, GZ_L
+#define ITG_3200_WHO_AM_I 0x00 // identification register
+#define ITG_3200_POWER_REG 0x3E
+#define ITG_3200_POWER_DATA 0b00000011 // reset, sleep stby off; PLL with Z Gyro reference
+#define ITG_3200_DLPF_FS_REG 0x16
+#define ITG_3200_DLPF_FS_DATA 0b00011100 // FullScale +-2000deg/s; DIgital Low Pass Filter: 20Hz
+#define ITG_3200_SR_DIV_REG 0x15
+#define ITG_3200_SR_DIV_DATA 0b00000100 // 200Hz output
+#define ITG_3200_SCALE_FACTOR 14.375f
 
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
@@ -28,13 +42,20 @@ using namespace std;
 
 unsigned char i2c_buffer;
 unsigned char accel_buffer[6];
-int acceleration[3];
+unsigned char gyro_buffer[8];
+int linear_acceleration[3];
+float rotational_acceleration[3];
+float temperature;
 unsigned int tmp_axis;
 unsigned int lsb, msb;
 
 int init_accel(gnublin_i2c *port);
 
+int init_gyro(gnublin_i2c *port);
+
 int read_accel(gnublin_i2c *port, int *x_axis, int *y_axis, int *z_axis);
+
+int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, float *z_axis);
 
 int main(int argc, char **argv) {
    //ros::init(argc, argv, "ahrs_node");
@@ -44,41 +65,61 @@ int main(int argc, char **argv) {
 
    gnublin_i2c i2c;
    init_accel(&i2c);
-
-
-   //unsigned char RxBuf = 0;
+   init_gyro(&i2c);
 
    for (unsigned char i = 0; i < 100; i++) {
-      read_accel(&i2c, &acceleration[0], &acceleration[1], &acceleration[2]);
+      read_accel(&i2c, &linear_acceleration[0], &linear_acceleration[1], &linear_acceleration[2]);
       usleep(5000);
       //printf("i = %d, byte: "BYTE_TO_BINARY_PATTERN"\n", (signed char)i, BYTE_TO_BINARY(
       //      (unsigned
       // char) i));
+   }
 
-      /*while (node.ok()) {
+   for (unsigned char i = 0; i < 100; i++) {
+      read_gyro(&i2c, &temperature, &rotational_acceleration[0], &rotational_acceleration[1],
+                &rotational_acceleration[2]);
+      cout << "Temp: " << temperature << endl;
+      usleep(5000);
+   }
+
+   /*while (node.ok()) {
          rate.sleep();
-      }*/}
+      }*/
    return 0;
 }
 
 
 int init_accel(gnublin_i2c *port) {
-   port->setAddress(ADXL345_ADDRESS); // set the address of the slave you want to read/write
-
+   // set the address of the slave
+   if (port->setAddress(ADXL345_ADDRESS) == -1) {
+      return -1;
+   }
    i2c_buffer = 0b00000000; // last two bits: 11 -> +-16g; 00-> +-2g
-   port->send(ADXL_DATA_FORMAT, &i2c_buffer, 1);
+   if (port->send(ADXL_DATA_FORMAT, &i2c_buffer, 1) == -1) {
+      return -2;
+   }
 
    i2c_buffer = 0b00001011; // 200Hz
-   port->send(ADXL_REGISTER_BW_RATE, &i2c_buffer, 1);
+   if (port->send(ADXL_REGISTER_BW_RATE, &i2c_buffer, 1) == -1) {
+      return -3;
+   }
 
    // Power ON
    i2c_buffer = ADXL_PWRCTL_MEASURE;
-   port->send(ADXL_REGISTER_PWRCTL, &i2c_buffer, 1);
+   if (port->send(ADXL_REGISTER_PWRCTL, &i2c_buffer, 1) == -1) {
+      return -4;
+   }
+   return 0;
 }
 
 int read_accel(gnublin_i2c *port, int *x_axis, int *y_axis, int *z_axis) {
-
-   port->receive(0x32, accel_buffer, 6);
+   // set the address of the slave
+   if (port->setAddress(ADXL345_ADDRESS) == -1) {
+      return -1;
+   }
+   if (port->receive(0x32, accel_buffer, 6) == -1) {
+      return -2;
+   }
    // x_axis
    lsb = accel_buffer[0];
    msb = (signed char) accel_buffer[1];
@@ -98,4 +139,69 @@ int read_accel(gnublin_i2c *port, int *x_axis, int *y_axis, int *z_axis) {
    *z_axis = (signed int) tmp_axis;
 
    cout << "x: " << *x_axis << ", y: " << *y_axis << ", z: " << *z_axis << endl;
+   return 0;
+}
+
+int init_gyro(gnublin_i2c *port) {
+   // set the address of the slave you want to read/write
+   if (port->setAddress(ITG_3200_ADDRESS) == -1) {
+      return -1;
+   }
+   i2c_buffer = ITG_3200_DLPF_FS_DATA;
+   if (port->send(ITG_3200_DLPF_FS_REG, &i2c_buffer, 1) == -1) {
+      return -2;
+   }
+
+   i2c_buffer = ITG_3200_SR_DIV_DATA;
+   if (port->send(ITG_3200_SR_DIV_REG, &i2c_buffer, 1) == -1) {
+      return -3;
+   }
+
+   i2c_buffer = ITG_3200_POWER_DATA;
+   if (port->send(ITG_3200_POWER_REG, &i2c_buffer, 1) == -1) {
+      return -4;
+   }
+
+   if (port->receive(ITG_3200_WHO_AM_I, &i2c_buffer, 1) == -1) {
+      return -5;
+   }
+   cout << "Gyro ID: " << i2c_buffer << endl;
+   printf("Gyro ID: "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
+   return 0;
+}
+
+int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, float *z_axis) {
+   if (port->setAddress(ITG_3200_ADDRESS) == -1) {
+      return -1;
+   }
+   if (port->receive(ITG_3200_SENS_REG, gyro_buffer, 8) == -1) {
+      return -2;
+   }
+
+   // temp
+   lsb = gyro_buffer[1];
+   msb = gyro_buffer[0];
+   tmp_axis = lsb + (msb << 8);
+   printf("Temp: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[0]));
+   printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[1]));
+   *temp = 35.0f + ((tmp_axis + 13200) & 0xFFFF) / 280.0f;
+
+   // x_axis
+   lsb = gyro_buffer[3];
+   msb = (signed char) gyro_buffer[2];
+   tmp_axis = lsb + (msb << 8);
+   *x_axis = ((signed int) tmp_axis) / ITG_3200_SCALE_FACTOR;
+
+   // y_axis
+   lsb = gyro_buffer[5];
+   msb = (signed char) gyro_buffer[4];
+   tmp_axis = lsb + (msb << 8);
+   *y_axis = ((signed int) tmp_axis) / ITG_3200_SCALE_FACTOR;
+
+   // z_axis
+   lsb = gyro_buffer[7];
+   msb = (signed char) gyro_buffer[6];
+   tmp_axis = lsb + (msb << 8);
+   *z_axis = ((signed int) tmp_axis) / ITG_3200_SCALE_FACTOR;
+   return 0;
 }
