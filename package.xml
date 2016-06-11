@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package>
-    <name>ahrs</name>
+    <name>sensor_stick_driver</name>
     <version>0.0.1</version>
-    <description>The ahrs package</description>
+    <description>The sensor_stick_driver package</description>
 
     <maintainer email="luk.mitka@gmail.com">Łukasz Mitka</maintainer>
 
