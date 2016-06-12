@@ -63,6 +63,7 @@ float temperature;
 float magnet_orientation[3];
 unsigned int tmp_axis;
 unsigned int lsb, msb;
+signed int s_msb, s_tmp;
 
 int init_accel(gnublin_i2c *port);
 
@@ -94,6 +95,11 @@ int main(int argc, char **argv) {
                 &rotational_acceleration[2]);
       read_magnet(&i2c, &magnet_orientation[0], &magnet_orientation[1], &magnet_orientation[2]);
       //cout << "Temp: " << temperature << endl;
+      printf("T: %f, Ax: %f, Ay: %f, Az: %f, Gx: %f, Gy: %f, Gz: %f, Mx: %f, My: %f, Mz: %f\n",
+             temperature, linear_acceleration[0], linear_acceleration[1], linear_acceleration[2],
+             rotational_acceleration[0], rotational_acceleration[1], rotational_acceleration[2],
+             magnet_orientation[0], magnet_orientation[1], magnet_orientation[2]);
+
       //printf("i = %d, byte: "BYTE_TO_BINARY_PATTERN"\n", (signed char)i, BYTE_TO_BINARY(
       //      (unsigned
       // char) i));
@@ -184,8 +190,8 @@ int init_gyro(gnublin_i2c *port) {
    if (port->receive(ITG_3200_WHO_AM_I, &i2c_buffer, 1) == -1) {
       return -5;
    }
-   cout << "Gyro ID: " << i2c_buffer << endl;
-   printf("Gyro ID: "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
+   //cout << "Gyro ID: " << i2c_buffer << endl;
+   //printf("Gyro ID: "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
    return 0;
 }
 
@@ -199,11 +205,13 @@ int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, floa
 
    // temp
    lsb = gyro_buffer[1];
-   msb = gyro_buffer[0];
-   tmp_axis = lsb + (msb << 8);
+   s_msb = (signed char) gyro_buffer[0];
+   s_tmp = lsb + (s_msb << 8);
    //printf("Temp: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[0]));
    //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(gyro_buffer[1]));
-   *temp = 35.0f + ((tmp_axis + 13200) & 0xFFFF) / 280.0f;
+   *temp = 35.0f + ((s_tmp + 13200) / 280.0f);
+   //printf(" tmp: %d, calculated: %f\n", s_tmp, *temp);
+
 
    // x_axis
    lsb = gyro_buffer[3];
@@ -246,14 +254,14 @@ int init_magnet(gnublin_i2c *port) {
    } else if (port->receive(HMC5883L_MODE_REG, &i2c_buffer, 1) == -1) {
       return -4;
    } else {
-      printf("Mode: "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
+      // printf("Mode: "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
    }
 
    if (port->receive(HMC5883L_STATUS_REG, &i2c_buffer, 1) == -1) {
       return -5;
    }
-   cout << "Magnetometer status: " << i2c_buffer;
-   printf("; "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
+   //cout << "Magnetometer status: " << i2c_buffer;
+   //printf("; "BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(i2c_buffer));
 
    return 0;
 }
@@ -270,28 +278,28 @@ int read_magnet(gnublin_i2c *port, float *x_axis, float *y_axis, float *z_axis) 
    lsb = magnet_buffer[1];
    msb = (signed char) magnet_buffer[0];
    tmp_axis = lsb + (msb << 8);
-   printf("Gyro x: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[0]));
-   printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[1]));
+   //printf("Gyro x: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[0]));
+   //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[1]));
    *x_axis = ((signed int) tmp_axis) * HMC5883L_SCALE;
-   printf("; %f, ", *x_axis);
+   //printf("; %f, ", *x_axis);
 
    // y_axis
    lsb = magnet_buffer[5];
    msb = (signed char) magnet_buffer[4];
    tmp_axis = lsb + (msb << 8);
-   printf(", y: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[4]));
-   printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[5]));
+   //printf(", y: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[4]));
+   //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[5]));
    *y_axis = ((signed int) tmp_axis) * HMC5883L_SCALE;
-   printf("; %f, ", *y_axis);
+   //printf("; %f, ", *y_axis);
 
    // z_axis
    lsb = magnet_buffer[3];
    msb = (signed char) magnet_buffer[2];
    tmp_axis = lsb + (msb << 8);
-   printf(", z: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[2]));
-   printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[3]));
+   //printf(", z: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[2]));
+   //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[3]));
    *z_axis = ((signed int) tmp_axis) * HMC5883L_SCALE;
-   printf("; %f\n", *z_axis);
+   //printf("; %f\n", *z_axis);
 
    return 0;
 }
