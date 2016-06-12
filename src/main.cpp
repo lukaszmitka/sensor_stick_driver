@@ -35,6 +35,11 @@
 #define HMC5883L_SCALE 0.00092f
 #define HMC5883L_MODE_DATA 0b00000000 // continous measurement mode
 
+
+// unit constants
+#define g_to_m_s 9.8f // 1g = 9.8 m/s^2
+#define T_to_Gs 10000 // 1 Tesla = 10000 Gaus
+#define Gs_to_T 0.0001 // 1 Gaus = 10000 Tesla
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
   (byte & 0x80 ? '1' : '0'), \
@@ -49,6 +54,8 @@
 
 #include <iostream>
 #include <ros/ros.h>
+#include <sensor_msgs/Imu.h>
+#include <sensor_msgs/MagneticField.h>
 #include "gnublin.h"
 
 using namespace std;
@@ -58,7 +65,7 @@ unsigned char accel_buffer[6];
 unsigned char gyro_buffer[8];
 unsigned char magnet_buffer[6];
 float linear_acceleration[3];
-float rotational_acceleration[3];
+float rotation_speed[3];
 float temperature;
 float magnet_orientation[3];
 unsigned int tmp_axis;
@@ -78,10 +85,26 @@ int read_gyro(gnublin_i2c *port, float *temp, float *x_axis, float *y_axis, floa
 int read_magnet(gnublin_i2c *port, float *x_axis, float *y_axis, float *z_axis);
 
 int main(int argc, char **argv) {
-   //ros::init(argc, argv, "ahrs_node");
-   //ros::NodeHandle node;
-   //ros::spin();
-   //MadgwickAHRSupdate(1, 1, 1, 1, 1, 1, 1, 1, 1);
+   ros::init(argc, argv, "sensor_stick_driver_node");
+   ros::NodeHandle node("~");
+
+   //std::string s;
+   /*bool verbose;
+   if (node.getParam("verbose", verbose)) {
+      ROS_INFO("Got param: %b", verbose);
+   }
+   else {
+      ROS_ERROR("Failed to get param 'verbose'");
+   }
+   if (verbose) {
+      printf("Verbose mode is ON\n");
+   } else {
+      printf("No verobse\n");
+   }*/
+   ros::Publisher imu_pub = node.advertise<sensor_msgs::Imu>("/imu/data_raw", 5);
+   ros::Publisher mag_pub = node.advertise<sensor_msgs::MagneticField>("/imu/mag", 5);
+
+   ros::Rate loop_rate(200);
 
    gnublin_i2c i2c;
    init_accel(&i2c);
@@ -90,26 +113,45 @@ int main(int argc, char **argv) {
    sleep(1);
 
    for (unsigned char i = 0; i < 10; i++) {
-      read_accel(&i2c, &linear_acceleration[0], &linear_acceleration[1], &linear_acceleration[2]);
-      read_gyro(&i2c, &temperature, &rotational_acceleration[0], &rotational_acceleration[1],
-                &rotational_acceleration[2]);
-      read_magnet(&i2c, &magnet_orientation[0], &magnet_orientation[1], &magnet_orientation[2]);
+      //read_accel(&i2c, &linear_acceleration[0], &linear_acceleration[1], &linear_acceleration[2]);
+      //read_gyro(&i2c, &temperature, &rotational_acceleration[0], &rotational_acceleration[1],
+      //          &rotational_acceleration[2]);
+      //read_magnet(&i2c, &magnet_orientation[0], &magnet_orientation[1], &magnet_orientation[2]);
+
       //cout << "Temp: " << temperature << endl;
-      printf("T: %f, Ax: %f, Ay: %f, Az: %f, Gx: %f, Gy: %f, Gz: %f, Mx: %f, My: %f, Mz: %f\n",
+      /*printf("T: %f, Ax: %f, Ay: %f, Az: %f, Gx: %f, Gy: %f, Gz: %f, Mx: %f, My: %f, Mz: %f\n",
              temperature, linear_acceleration[0], linear_acceleration[1], linear_acceleration[2],
              rotational_acceleration[0], rotational_acceleration[1], rotational_acceleration[2],
              magnet_orientation[0], magnet_orientation[1], magnet_orientation[2]);
-
+      */
       //printf("i = %d, byte: "BYTE_TO_BINARY_PATTERN"\n", (signed char)i, BYTE_TO_BINARY(
       //      (unsigned
       // char) i));
       usleep(5000);
    }
 
+   while (node.ok()) {
+      sensor_msgs::Imu imu;
+      read_accel(&i2c, &linear_acceleration[0], &linear_acceleration[1], &linear_acceleration[2]);
+      read_gyro(&i2c, &temperature, &rotation_speed[0], &rotation_speed[1],
+                &rotation_speed[2]);
+      read_magnet(&i2c, &magnet_orientation[0], &magnet_orientation[1], &magnet_orientation[2]);
 
-   /*while (node.ok()) {
-         rate.sleep();
-      }*/
+      imu.angular_velocity.x = rotation_speed[0];
+      imu.angular_velocity.y = rotation_speed[1];
+      imu.angular_velocity.z = rotation_speed[2];
+      imu.linear_acceleration.x = linear_acceleration[0];
+      imu.linear_acceleration.y = linear_acceleration[1];
+      imu.linear_acceleration.z = linear_acceleration[2];
+      imu_pub.publish(imu);
+
+      sensor_msgs::MagneticField magField;
+      magField.magnetic_field.x = magnet_orientation[0];
+      magField.magnetic_field.y = magnet_orientation[1];
+      magField.magnetic_field.z = magnet_orientation[2];
+      mag_pub.publish(magField);
+      loop_rate.sleep();
+   }
    return 0;
 }
 
@@ -149,19 +191,19 @@ int read_accel(gnublin_i2c *port, float *x_axis, float *y_axis, float *z_axis) {
    lsb = accel_buffer[0];
    msb = (signed char) accel_buffer[1];
    tmp_axis = lsb + (msb << 8);
-   *x_axis = ((signed int) tmp_axis) * ADXL_SCALE_FACTOR;
+   *x_axis = g_to_m_s * ((signed int) tmp_axis) * ADXL_SCALE_FACTOR;
 
    // y_axis
    lsb = accel_buffer[2];
    msb = (signed char) accel_buffer[3];
    tmp_axis = lsb + (msb << 8);
-   *y_axis = ((signed int) tmp_axis) * ADXL_SCALE_FACTOR;
+   *y_axis = g_to_m_s * ((signed int) tmp_axis) * ADXL_SCALE_FACTOR;
 
    // z_axis
    lsb = accel_buffer[4];
    msb = (signed char) accel_buffer[5];
    tmp_axis = lsb + (msb << 8);
-   *z_axis = ((signed int) tmp_axis) * ADXL_SCALE_FACTOR;
+   *z_axis = g_to_m_s * ((signed int) tmp_axis) * ADXL_SCALE_FACTOR;
 
    //cout << "x: " << *x_axis << ", y: " << *y_axis << ", z: " << *z_axis << endl;
    return 0;
@@ -280,7 +322,7 @@ int read_magnet(gnublin_i2c *port, float *x_axis, float *y_axis, float *z_axis) 
    tmp_axis = lsb + (msb << 8);
    //printf("Gyro x: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[0]));
    //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[1]));
-   *x_axis = ((signed int) tmp_axis) * HMC5883L_SCALE;
+   *x_axis = Gs_to_T * ((signed int) tmp_axis) * HMC5883L_SCALE;
    //printf("; %f, ", *x_axis);
 
    // y_axis
@@ -289,7 +331,7 @@ int read_magnet(gnublin_i2c *port, float *x_axis, float *y_axis, float *z_axis) 
    tmp_axis = lsb + (msb << 8);
    //printf(", y: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[4]));
    //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[5]));
-   *y_axis = ((signed int) tmp_axis) * HMC5883L_SCALE;
+   *y_axis = Gs_to_T * ((signed int) tmp_axis) * HMC5883L_SCALE;
    //printf("; %f, ", *y_axis);
 
    // z_axis
@@ -298,7 +340,7 @@ int read_magnet(gnublin_i2c *port, float *x_axis, float *y_axis, float *z_axis) 
    tmp_axis = lsb + (msb << 8);
    //printf(", z: "BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[2]));
    //printf(""BYTE_TO_BINARY_PATTERN" ", BYTE_TO_BINARY(magnet_buffer[3]));
-   *z_axis = ((signed int) tmp_axis) * HMC5883L_SCALE;
+   *z_axis = Gs_to_T * ((signed int) tmp_axis) * HMC5883L_SCALE;
    //printf("; %f\n", *z_axis);
 
    return 0;
