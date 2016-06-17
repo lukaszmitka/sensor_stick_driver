@@ -7,8 +7,7 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/MagneticField.h>
 #include "gnublin.h"
-#include
- "main.h"
+#include "main.h"
 
 using namespace std;
 
