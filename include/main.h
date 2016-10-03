@@ -5,6 +5,12 @@
 #ifndef SENSOR_STICK_DRIVER_MAIN_H
 #define SENSOR_STICK_DRIVER_MAIN_H
 
+#include <iostream>
+#include <ros/ros.h>
+#include <sensor_msgs/Imu.h>
+#include <sensor_msgs/MagneticField.h>
+#include "gnublin.h"
+
 #define BOARD RASPBERRY_PI
 
 // accelerometer constants

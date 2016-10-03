@@ -2,11 +2,6 @@
 // Created by lukasz on 07.06.16.
 //
 
-#include <iostream>
-#include <ros/ros.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/MagneticField.h>
-#include "gnublin.h"
 #include "main.h"
 
 using namespace std;
