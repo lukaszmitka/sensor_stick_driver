@@ -29,10 +29,29 @@ int main(int argc, char **argv) {
 
    ros::Rate loop_rate(200);
 
-   gnublin_i2c i2c;
-   init_accel(&i2c);
-   init_gyro(&i2c);
-   init_magnet(&i2c);
+   //gnublin_i2c i2c;
+   gnublin_i2c i2c("/dev/i2c-1", 0);
+
+   int reply = init_accel(&i2c);
+   if (reply == 0) {
+      std::cout << "Accel init succes" << std::endl;
+   } else {
+      std::cout << "Accel init ERROR " << reply << std::endl;
+   }
+
+   reply = init_gyro(&i2c);
+   if (reply == 0) {
+      std::cout << "Gyro init succes" << std::endl;
+   } else {
+      std::cout << "Gyro init ERROR " << reply << std::endl;
+   }
+
+   reply = init_magnet(&i2c);
+   if (reply == 0) {
+      std::cout << "Magnet init succes" << std::endl;
+   } else {
+      std::cout << "Magnet init ERROR " << reply << std::endl;
+   }
    sleep(1);
 
    while (node.ok()) {
